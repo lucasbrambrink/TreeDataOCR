@@ -1,6 +1,6 @@
 from django.db import models
 from PIL import Image, ImageDraw
-
+import pytesseract
 
 class th(object):
 
@@ -8,6 +8,36 @@ class th(object):
     def add(t1, t2):
         return (t1[0] + t2[0],
                 t1[1] + t2[1])
+
+    @staticmethod
+    def get_perimeter_of_2D(array):
+        return [array[x][y] for x in range(len(array))
+                for y in range(len(array[0])) if x
+        ]
+
+
+class TwoDim(object):
+
+    @staticmethod
+    def top(array):
+        return array[0]
+
+    @staticmethod
+    def right(array):
+        return [array[x][-1] for x in range(len(array))]
+
+    @staticmethod
+    def left(array):
+        return [array[x][0] for x in range(len(array))]
+
+    @staticmethod
+    def bottom(array):
+        return array[-1]
+
+    @classmethod
+    def all(cls, array):
+        return cls.top(array), cls.right(array), cls.bottom(array), cls.left(array)
+
 
 class Stat(object):
 
@@ -36,12 +66,23 @@ class Stat(object):
         return self.var ** 0.5
 
 
+class CharOCR(object):
+
+    @staticmethod
+    def get_string(img):
+        return pytesseract.image_to_string(img)
+
+
 class Steps(object):
     UP = (0, -1)
+    UP_LEFT = (-1, -1)
+    UP_RIGHT = (1, -1)
     DOWN = (0, 1)
+    DOWN_LEFT = (-1, 1)
+    DOWN_RIGHT = (1, 1)
     LEFT = (-1, 0)
     RIGHT = (1, 0)
-    ALL = (UP, DOWN, LEFT, RIGHT)
+    ALL = (UP, UP_LEFT, UP_RIGHT, DOWN, DOWN_LEFT, DOWN_RIGHT, LEFT, RIGHT)
 
     @staticmethod
     def step(pixel, step_type):
@@ -77,9 +118,9 @@ class Pixel(object):
 class OpticalCharacterRecognition(object):
     TWO_DIM_CACHE = '_cache_two_dim'
     DEFAULT_SQUARE_SIZE = 10
-    DEFAULT_STEPS = 2
+    DEFAULT_STEPS = 10
     ALLOWANCE_FACTOR = 2
-    FUDGINESS = 5
+    FUDGINESS = 50
 
     def __init__(self, image_path=None):
         self.image_path = image_path
@@ -89,8 +130,11 @@ class OpticalCharacterRecognition(object):
         self.identified_polygons = []
         self.instance_black_pixels = set()
         self.corners = []
-        self.branching_sites = []
-        self.leaves = []
+        self.find_all_polygons()
+        self.branching_sites = self.fancier_nodes()
+        self.leaves = self.corner_nodes()
+
+        self.char = CharOCR.get_string(Image.open(self.image_path))
 
     def is_black(self, pixel):
         try:
@@ -98,24 +142,29 @@ class OpticalCharacterRecognition(object):
         except (IndexError, KeyError):
             return False
 
+    def get_cache(self, key):
+        key = '_{}'.format(key)
+        if not hasattr(self, key):
+            return None
+
+        return getattr(self, key)
+
+    def set_cache(self, key, value):
+        key = '_{}'.format(key)
+        setattr(self, key, value)
+        return value
+
     @property
     def pixel_values_by_address(self):
-        value = {pixel: self.pixels[pixel[0], pixel[1]]
-                 for pixel in self.two_dim_array}
+        return self.get_cache('p') or self.set_cache('p', {
+            pixel: self.pixels[pixel[0], pixel[1]]
+            for pixel in self.two_dim_array
+        })
 
-        return self.cached_property('pixel_values_by_address', value)
 
     @property
     def __size__(self):
         return self.img.size[0], self.img.size[1]
-
-    def cached_property(self, property_name, value):
-        key = '_{}'.format(property_name)
-        if hasattr(self, key):
-            return getattr(self, key)
-
-        setattr(self, key, value)
-        return value
 
     def find_max_density_area(self, pixel, size=None):
         square_limit = size or self.DEFAULT_SQUARE_SIZE
@@ -135,15 +184,17 @@ class OpticalCharacterRecognition(object):
 
     @property
     def two_dim_array(self):
-        value = [(x, y) for y in range(self.__size__[1])
-                 for x in range(self.__size__[0])]
-        return self.cached_property('two_dim_array', value)
+        return self.get_cache('t') or self.set_cache('t', value=[
+                (x, y) for y in range(self.__size__[1])
+                for x in range(self.__size__[0])
+            ])
 
     @property
     def black_pixels(self):
-        value = [pixel for pixel in self.two_dim_array
-                 if Pixel.is_mostly_black(self.pixels[pixel[0], pixel[1]])]
-        return self.cached_property('black_pixels', set(value))
+        return self.get_cache('bp') or self.set_cache('bp', set([
+            pixel for pixel in self.two_dim_array
+            if Pixel.is_mostly_black(self.pixels[pixel[0], pixel[1]])
+        ]))
 
     def __iter__(self):
         for x in range(self.img.size[0]):
@@ -203,8 +254,8 @@ class OpticalCharacterRecognition(object):
         while len(self.instance_black_pixels):
             polygon_start = self.instance_black_pixels[0]
             polygon = self.execute_contiguous_walk(polygon_start)
-            for pixel in polygon:
-                self.instance_black_pixels.remove(pixel)
+            self.instance_black_pixels = [p for p in self.instance_black_pixels
+                                          if p not in polygon]
 
             self.identified_polygons.append((polygon, len(polygon)))
 
@@ -240,7 +291,7 @@ class OpticalCharacterRecognition(object):
 
     @property
     def best_polygon(self):
-        return max(self.identified_polygons, key=lambda x: [1])[0]
+        return max(self.identified_polygons, key=lambda x: x[1])[0]
 
     def best_nodes(self):
         e, nodes = self.edge_pixels(self.best_polygon)
@@ -260,11 +311,11 @@ class OpticalCharacterRecognition(object):
         return best_nodes
 
     def show_nodes(self):
-        self.DEFAULT_STEPS = 20
-        self.FUDGINESS = 50
-        self.find_all_polygons()
-        self.branching_sites = self.fancier_nodes()
-        self.leaves = self.corner_nodes()
+        # self.DEFAULT_STEPS = 20
+        # self.FUDGINESS = 50
+        # self.find_all_polygons()
+        # self.branching_sites = self.fancier_nodes()
+        # self.leaves = self.corner_nodes()
         best = [b[0] for b in self.branching_sites]
         lowest = [a[0] for a in self.leaves]
 
@@ -274,14 +325,64 @@ class OpticalCharacterRecognition(object):
 
         img.show()
 
-    def corner_nodes(self):
-        e, nodes = self.edge_pixels(self.best_polygon)
-        clean_nodes = sorted(nodes, key=lambda x: x[1])
-        range_excluded = self.filter_by_range(clean_nodes)
-        first_std_filter = self.filter_by_std(range_excluded, lambda x: x < 0)
-        std = Stat([f[1] for f in first_std_filter]).std
-        return self.filter_by_std(first_std_filter, lambda x: x <= std)
+    def count_white_edges(self, pixel, edge_row_operations):
+        white_edges = 0
+        for row in edge_row_operations:
+            if all(Steps.step(pixel[0], operation) not in self._bp
+                   for operation in row):
+                white_edges += 1
 
+        return white_edges
+
+    def get_edges(self, num_steps):
+        return TwoDim.all([[(x, y) for x in range(-num_steps, num_steps + 1)] for y in range(-num_steps, num_steps + 1)])
+
+
+    def corner_nodes(self):
+        value = self.get_cache('cn')
+        if value:
+            return value
+
+
+        leaves = []
+
+        e, nodes = self.edge_pixels(self.best_polygon)
+        cleaner_nodes = sorted(nodes, key=lambda x: x[1])[:len(nodes) / 2]
+        best_leaves = self.filter_by_range(cleaner_nodes)
+        step_size = 3
+        for num_steps in range(3, self.DEFAULT_STEPS * 2):
+            found_leaf_count = 0
+            for leaf in best_leaves:
+                white_edges = self.count_white_edges(leaf, self.get_edges(num_steps))
+                if white_edges >= 3:
+                    found_leaf_count += 1
+
+            if found_leaf_count > (len(best_leaves) / 2):
+                print "STOPPED AT", found_leaf_count
+                step_size = num_steps
+                break
+
+        print "BEST STEP SIZE", step_size
+        print "TEST LEAF", best_leaves
+
+        edge_row_operations = self.get_edges(step_size)
+        for pixel in cleaner_nodes:
+            white_edges = self.count_white_edges(pixel, edge_row_operations)
+            if white_edges >= 3:
+                leaves.append(pixel)
+
+        self.FUDGINESS = step_size * 1.5
+        value = self.filter_by_range(leaves)
+
+        return self.set_cache('cn', value)
+        #
+        #
+        # clean_nodes = sorted(nodes, key=lambda x: x[1])
+        # range_excluded = self.filter_by_range(clean_nodes)
+        # first_std_filter = self.filter_by_std(range_excluded, lambda x: x < 0)
+        # std = Stat([f[1] for f in first_std_filter]).std
+        # value = self.filter_by_std(first_std_filter, lambda x: x <= std)
+        # return self.set_cache('cn', value)
 
     def filter_by_range(self, clean_nodes):
         best_nodes = [clean_nodes[0]]
@@ -307,38 +408,43 @@ class OpticalCharacterRecognition(object):
         return positive_diff
 
     def fancier_nodes(self):
+        value = self.get_cache('fn')
+        if value:
+            return value
         e, nodes = self.edge_pixels(self.best_polygon)
         best_third = len(nodes) / 3
         clean_nodes = [node for node in sorted(nodes, key=lambda x: x[1], reverse=True)[:best_third]]
         best_nodes = self.filter_by_range(clean_nodes)
-        return self.filter_by_std(best_nodes, lambda x: x > 0)
+        value = self.filter_by_std(best_nodes, lambda x: x > 0)
+        return self.set_cache('fn', value)
 
     def within_range(self, node, second_node):
         distance = ((second_node[1] - node[1]) ** 2 + (second_node[0] - node[0]) ** 2) ** 0.5
         return distance < self.FUDGINESS
 
     def execute_contiguous_walk(self, start):
-        contiguous_shape_pixels = [start]
-        checked_pixels = []
-        for pixel in contiguous_shape_pixels:
-            if pixel in checked_pixels:
-                continue
+        contiguous_shape_pixels = set([start])
+        checked_pixels = set()
+        black_pixels = set(self.black_pixels)
+        while True:
+            new_pixels = set()
+            for pixel in contiguous_shape_pixels:
+                if pixel in checked_pixels:
+                    continue
+                else:
+                    checked_pixels.add(pixel)
+
+                for step in (Steps.step(pixel, step) for step in Steps.ALL):
+                    if step in checked_pixels:
+                        continue
+                    if step in black_pixels:
+                        new_pixels.add(step)
+
+            if len(new_pixels):
+                contiguous_shape_pixels |= new_pixels
             else:
-                checked_pixels.append(pixel)
+                break
 
-            for step in (Steps.step(pixel, step) for step in Steps.ALL):
-                if step in checked_pixels:
-                    continue
-                try:
-                    if Pixel.is_mostly_black(self.pixels[step[0], step[1]]):
-                        contiguous_shape_pixels.append(step)
-                except IndexError:
-                    continue
-
-        return set(contiguous_shape_pixels)
-
-
-
-
+        return contiguous_shape_pixels
 
 
