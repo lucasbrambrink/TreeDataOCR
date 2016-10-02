@@ -75,19 +75,35 @@ class CharOCR(object):
 
 class Steps(object):
     UP = (0, -1)
-    UP_LEFT = (-1, -1)
-    UP_RIGHT = (1, -1)
     DOWN = (0, 1)
-    DOWN_LEFT = (-1, 1)
-    DOWN_RIGHT = (1, 1)
     LEFT = (-1, 0)
     RIGHT = (1, 0)
-    ALL = (UP, UP_LEFT, UP_RIGHT, DOWN, DOWN_LEFT, DOWN_RIGHT, LEFT, RIGHT)
+    UP_LEFT = (-1, -1)
+    UP_RIGHT = (1, -1)
+    DOWN_LEFT = (-1, 1)
+    DOWN_RIGHT = (1, 1)
+    ALL = (UP, UP_RIGHT, RIGHT, DOWN_RIGHT, DOWN, DOWN_LEFT, LEFT, UP_LEFT)
+    MAIN_FOUR = (UP, DOWN, LEFT, RIGHT)
+
+    QUADRANTS = (
+        (UP, RIGHT, UP_RIGHT),
+        (DOWN, RIGHT, DOWN_RIGHT),
+        (DOWN, LEFT, DOWN_LEFT),
+        (UP, LEFT, UP_LEFT),
+    )
+
+    ORIENTATIONS = (
+        (QUADRANTS[0], QUADRANTS[2]),
+        (QUADRANTS[1], QUADRANTS[3]),
+        (QUADRANTS[2], QUADRANTS[0]),
+        (QUADRANTS[3], QUADRANTS[1])
+    )
 
     @staticmethod
     def step(pixel, step_type):
         return (pixel[0] + step_type[0],
                 pixel[1] + step_type[1])
+
 
 
 class Pixel(object):
@@ -114,6 +130,16 @@ class Pixel(object):
                 return True
         return False
 
+    @staticmethod
+    def slope(pixel1, pixel2):
+        if (pixel2[0] - pixel1[0]) == 0:
+            return float(100)
+        return float(pixel2[1] - pixel1[1]) / float(pixel2[0] - pixel1[0])
+
+    @staticmethod
+    def distance(pixel1, pixel2):
+        return ((pixel2[1] - pixel1[1]) ** 2 + (pixel2[0] - pixel1[0]) ** 2) ** 0.5
+
 
 class OpticalCharacterRecognition(object):
     TWO_DIM_CACHE = '_cache_two_dim'
@@ -131,10 +157,10 @@ class OpticalCharacterRecognition(object):
         self.instance_black_pixels = set()
         self.corners = []
         self.find_all_polygons()
-        self.branching_sites = self.fancier_nodes()
-        self.leaves = self.corner_nodes()
+        # self.branching_sites = self.fancier_nodes()
+        # self.leaves = self.corner_nodes()
 
-        self.char = CharOCR.get_string(Image.open(self.image_path))
+        # self.char = CharOCR.get_string(Image.open(self.image_path))
 
     def is_black(self, pixel):
         try:
@@ -159,7 +185,7 @@ class OpticalCharacterRecognition(object):
         return self.get_cache('p') or self.set_cache('p', {
             pixel: self.pixels[pixel[0], pixel[1]]
             for pixel in self.two_dim_array
-        })
+            })
 
 
     @property
@@ -179,22 +205,21 @@ class OpticalCharacterRecognition(object):
                     black_pixels.append(test_pixel)
 
         if len(black_pixels) > self.max_density[1]:
-            print black_pixels
             self.max_density = (pixel, len(black_pixels))
 
     @property
     def two_dim_array(self):
         return self.get_cache('t') or self.set_cache('t', value=[
-                (x, y) for y in range(self.__size__[1])
-                for x in range(self.__size__[0])
+            (x, y) for y in range(self.__size__[1])
+            for x in range(self.__size__[0])
             ])
 
     @property
     def black_pixels(self):
         return self.get_cache('bp') or self.set_cache('bp', set([
-            pixel for pixel in self.two_dim_array
-            if Pixel.is_mostly_black(self.pixels[pixel[0], pixel[1]])
-        ]))
+                                                                    pixel for pixel in self.two_dim_array
+                                                                    if Pixel.is_mostly_black(self.pixels[pixel[0], pixel[1]])
+                                                                    ]))
 
     def __iter__(self):
         for x in range(self.img.size[0]):
@@ -362,8 +387,6 @@ class OpticalCharacterRecognition(object):
                 step_size = num_steps
                 break
 
-        print "BEST STEP SIZE", step_size
-        print "TEST LEAF", best_leaves
 
         edge_row_operations = self.get_edges(step_size)
         for pixel in cleaner_nodes:
@@ -422,6 +445,62 @@ class OpticalCharacterRecognition(object):
         distance = ((second_node[1] - node[1]) ** 2 + (second_node[0] - node[0]) ** 2) ** 0.5
         return distance < self.FUDGINESS
 
+    # def find_line_thickness(self, polygon):
+    #     if len(polygon) == 0:
+    #         raise Exception("Polygon is empty")
+    #
+    #     radius = 1
+    #     all_operations = [(x, y) for x in range(-radius, radius + 1)
+    #                       for y in range(-radius, radius + 1)]
+    #     best_pixel = (polygon[0], 0)
+    #     black_pixels = set(self.black_pixels)
+    #     current_pixel = best_pixel
+    #     count = 0
+    #     for operation in all_operations:
+    #         test_pixel_position = th.add(pixel, operation)
+    #         if Pixel.distance(test_pixel_position, current_pixel) > radius:
+    #             continue
+    #
+    #         if test_pixel_position in black_pixels:
+    #             count += 1
+    #
+    #         if count > best_pixel[1]:
+    #             best_pixel = (current_pixel, count)
+    #
+    #
+    #
+    #
+    #
+    #             if test_pixel_position not in black_pixels:
+    #                 white_pixels += 1
+
+
+    #
+    # def perform_tree_analysis(self, polygon_map):
+    #     # starting_pixel = sorted(polygon_map, key=lambda x: (x[0], x[1]))[0]
+    #     # seen_pixels = set()
+    #
+    #     num_steps = num_steps or self.DEFAULT_STEPS
+    #
+    #     least_white_number_pixels = (2 * (num_steps ** 2)) + num_steps - self.ALLOWANCE_FACTOR
+    #     edge_pixels = []
+    #     nodes = []
+    #     for pixel in polygon_map:
+    #         white_pixels = 0
+    #         count_black_pixels = 0
+    #         for operation in all_operations:
+    #             test_pixel_position = th.add(pixel, operation)
+    #             if test_pixel_position not in black_pixels:
+    #                 white_pixels += 1
+    #             else:
+    #                 count_black_pixels += 1
+    #
+    #         if white_pixels >= least_white_number_pixels:
+    #             edge_pixels.append(pixel)
+
+
+
+
     def execute_contiguous_walk(self, start):
         contiguous_shape_pixels = set([start])
         checked_pixels = set()
@@ -446,5 +525,453 @@ class OpticalCharacterRecognition(object):
                 break
 
         return contiguous_shape_pixels
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class Skelleton(object):
+    """
+    there is a point at which
+    the set of all the best pixels (center)
+    will remain constant from n to n + 1
+
+
+
+    """
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def min_score(scored_pixels):
+        return min(scored_pixels, key=lambda x: x[1])[1]
+
+    @staticmethod
+    def nth_lowest(array, n):
+        return sorted(array, key=lambda x: x[1])[n - 1]
+
+    @classmethod
+    def count_mins(cls, scored_pixels):
+        minimum = cls.min_score(scored_pixels)
+        return sum(1 for p in scored_pixels if p[1] == minimum)
+
+    @classmethod
+    def count_below_than(cls, n, scored_pixels):
+        nth_lowest = cls.nth_lowest(scored_pixels, n)
+        return sum(1 for p in scored_pixels if p[1] <= nth_lowest)
+
+    @staticmethod
+    def score_pixels(steps, polygon):
+        operations = [(step_x, step_y) for step_x in range(-steps, steps + 1)
+                      for step_y in range(-steps, steps + 1)
+                      if Pixel.distance((0,0), (step_x, step_y)) <= steps]
+        scored_pixels = []
+        for pixel in polygon:
+            score = sum(1 for other_pixel in
+                        (Steps.step(pixel, step) for step in operations)
+                        if other_pixel in polygon)
+            scored_pixels.append((pixel, score))
+        return scored_pixels
+
+    @staticmethod
+    def edges(polygon):
+        new_pixels = set()
+        for pixel in polygon:
+
+            borders_white = False
+            for step in (Steps.step(pixel, step) for step in Steps.ALL):
+                if step not in polygon:
+                    borders_white = True
+                    break
+
+            if borders_white:
+                new_pixels.add(pixel)
+
+        return new_pixels
+
+    @staticmethod
+    def strict_edges(polygon):
+        new_pixels = set()
+        for pixel in polygon:
+
+            borders_white = False
+            for step in (Steps.step(pixel, step)
+                         for step in Steps.MAIN_FOUR):
+                if step not in polygon:
+                    borders_white = True
+                    break
+
+            if borders_white:
+                new_pixels.add(pixel)
+
+        return new_pixels
+
+    @staticmethod
+    def order_polygon(polygon):
+        seen_pixels = set()
+        current_pixel = iter(polygon).next()
+        contiguous_ordering = [current_pixel]
+        while True:
+            found_new_pixels = []
+            for step in Steps.ALL:
+                test = Steps.step(current_pixel, step)
+                if test in seen_pixels:
+                    continue
+
+                if test in polygon:
+                    found_new_pixels.append(test)
+                    seen_pixels.add(test)
+
+            if len(found_new_pixels) == 1:
+                contiguous_ordering.append(found_new_pixels[0])
+                current_pixel = found_new_pixels[0]
+            if len(found_new_pixels) > 1:
+                possible = []
+                for found_pixel in found_new_pixels:
+                    can_continue = False
+                    for step in Steps.ALL:
+                        test_found = Steps.step(found_pixel, step)
+                        if test_found in seen_pixels:
+                            continue
+                        if test_found in polygon:
+                            can_continue = True
+                            break
+
+                    if can_continue:
+                        possible.append(found_pixel)
+
+                if len(possible) > 0:
+                    current_pixel = possible[0]
+                    contiguous_ordering.append(current_pixel)
+                else:
+                    found_new_pixels = []
+
+            if len(contiguous_ordering) == len(polygon):
+                break
+
+            if not len(found_new_pixels):
+                last_added = contiguous_ordering[-1]
+                for step in Steps.ALL:
+                    test = Steps.step(current_pixel, step)
+                    if test in polygon and test != last_added:
+                        found_new_pixels.append(test)
+
+                for finishing_pixel in found_new_pixels:
+                    contiguous_ordering.append(finishing_pixel)
+
+                break
+
+        return contiguous_ordering
+
+
+
+    @staticmethod
+    def find_n_neighbors(pixel, available_steps, n, polygon):
+        found = []
+        current_pixel = pixel
+        while True:
+            found_new_pixel = False
+            for step in available_steps:
+                test = Steps.step(current_pixel, step)
+                if test in polygon:
+                    found.append(test)
+                    current_pixel = test
+                    found_new_pixel = True
+                    break
+
+            if len(found) == n:
+                return found
+            elif not found_new_pixel:
+                break
+
+        return None
+
+
+
+    @classmethod
+    def surrounding_pixels(cls, pixel, polygon):
+        RANGE = 4
+        for orientation in Steps.ORIENTATIONS:
+            seen = set()
+
+            found = [cls.find_n_neighbors(pixel, direction, RANGE, polygon)
+                     for direction in orientation]
+            if all(found):
+                return found
+
+        return None
+
+    @classmethod
+    def score_polygon(cls, polygon):
+        scored_pixels = []
+        for pixel in polygon:
+            surrounding = cls.surrounding_pixels(pixel, polygon)
+            if surrounding is None:
+                continue
+
+            x, y = surrounding[0][-1], surrounding[1][-1]
+            scored_pixels.append((pixel, Pixel.slope(x, y)))
+            print x, y
+            print surrounding
+            print scored_pixels
+            break
+        return scored_pixels
+
+
+    @staticmethod
+    def score_pixel(index, ordered_polygon):
+        STEPS = 3
+        below = index - STEPS
+        upper = index + STEPS if index + STEPS < len(ordered_polygon) else (index + STEPS) - len(ordered_polygon)
+        diff = Pixel.slope(ordered_polygon[below], ordered_polygon[upper])
+        return diff
+
+    @classmethod
+    def score_all_pixels(cls, polygon):
+        return [(pixel, cls.score_pixel(index, polygon))
+                for index, pixel in enumerate(polygon)]
+
+    @staticmethod
+    def compare_slopes(index, ordered_polygon):
+        STEPS = 5
+        if len(ordered_polygon) < STEPS:
+            raise Exception(u"This polygon is almost empty")
+
+        below = index - STEPS
+        upper = index + STEPS + 1
+        # print 'upper', upper, 'below', below
+        beneath = []
+        above = []
+        for i in range(below, upper):
+            if i >= len(ordered_polygon):
+                i -= len(ordered_polygon)
+                above.append(ordered_polygon[i][1])
+                continue
+
+            pixel = ordered_polygon[i][1]
+            if i == index:
+                continue
+            elif i > index:
+                above.append(pixel)
+            else:
+                beneath.append(pixel)
+
+        return beneath[0] - above[-1]
+
+    @classmethod
+    def assign_secondary_scores(cls, scored):
+        return [(scored_p[0], scored_p[1], cls.compare_slopes(index, scored))
+                for index, scored_p in enumerate(scored)]
+
+    def leaves(self, polygon):
+        if type(polygon) is not set:
+            polygon = set(polygon)
+
+        steps = 5
+        leaves = None
+
+        reduced_polygon = set()
+        first_item = iter(polygon).next()
+        reduced_polygon.add(first_item)
+        for pixel in polygon:
+            if pixel in reduced_polygon:
+                continue
+
+            add = True
+            for rp in reduced_polygon:
+                if Pixel.distance(rp, pixel) < 5:
+                    add = False
+                    break
+
+            if add:
+                reduced_polygon.add(pixel)
+
+        while True:
+            scored_pixels = self.score_pixels(steps, reduced_polygon)
+            plus_one_pixels = self.score_pixels(steps + 1, reduced_polygon)
+
+            count_scored = self.count_below_than(2, scored_pixels)
+            print count_scored
+            print "Step:", steps
+            # print scored_pixels
+            if count_scored > 5 and count_scored == self.count_below_than(2, plus_one_pixels):
+                minimum = self.min_score(scored_pixels)
+                leaves = [pixel for pixel in scored_pixels if pixel[1] == minimum]
+                break
+            else:
+                steps += 1
+
+            if steps == 20:
+                break
+
+        return leaves
+
+
+    @staticmethod
+    def score(pixel, radius):
+        pass
+
+    @staticmethod
+    def reduce_polygon_to_single_pixel_line(polygon):
+        """
+        take polygon
+        identify leaves --> hard?
+            -
+
+
+        remove pixels that are not leaves
+            - if still continuous (all leaves contained in a contiguous walk)
+                remove
+            else: dont remove
+
+        once a state is reached where no pixel can be removed
+        ==> resulting 2d polygon of thickness 1pixel --> trivial to find connections
+        """
+
+
+
+        pass
+
+    @staticmethod
+    def execute_contiguous_walk(polygon, starting_pixel):
+        contiguous_shape_pixels = set()
+        contiguous_shape_pixels.add(starting_pixel)
+
+        checked_pixels = set()
+        if type(polygon) is not set:
+            polygon = set(polygon)
+
+        while True:
+            new_pixels = set()
+            for pixel in contiguous_shape_pixels:
+                if pixel in checked_pixels:
+                    continue
+                else:
+                    checked_pixels.add(pixel)
+
+                for step in (Steps.step(pixel, step) for step in Steps.ALL):
+                    if step in checked_pixels:
+                        continue
+                    if step in polygon:
+                        new_pixels.add(step)
+
+            if len(new_pixels):
+                contiguous_shape_pixels |= new_pixels
+            else:
+                break
+
+        return contiguous_shape_pixels
+
+
+    @classmethod
+    def distill_leaves(cls, scored_pixels):
+        numbers = [x[2] for x in scored_pixels]
+        s = Stat(numbers)
+        std = s.std
+
+        outliers = [scored_pixel for scored_pixel, deviation
+                    in zip(scored_pixels, s.deviations) if abs(deviation) > std]
+        leaves = []
+        for test in outliers:
+            add_leaf = True
+            distances = [(test[0], Pixel.distance(test[0], out[0]))
+                         for out in outliers
+                         if out[0] != test[0]]
+            std = Stat([d[1] for d in distances]).std
+            for leaf in leaves:
+                if Pixel.distance(test[0], leaf[0]) < std * 0.5:
+                    add_leaf = False
+                    break
+
+            if add_leaf:
+                leaves.append(test)
+
+        return leaves
+
+    @classmethod
+    def valid_state(cls, polygon, leaves):
+        start = iter(polygon).next()
+        contiguous = cls.execute_contiguous_walk(polygon, start)
+        valid = True
+        for leaf in leaves:
+            if leaf not in contiguous:
+                valid = False
+                break
+
+        return valid
+
+    @classmethod
+    def distill_polygon(cls, polygon, leaves):
+        leaves = set([l[0] for l in leaves])
+        new_polygon = polygon
+        last_length = len(new_polygon)
+        while True:
+            for pixel in new_polygon:
+                test_p = set([p for p in new_polygon
+                              if p != pixel])
+                if cls.valid_state(test_p, leaves):
+                    new_polygon = test_p
+                    break
+
+            if len(new_polygon) == last_length:
+                break
+            else:
+                last_length = len(new_polygon)
+
+        return new_polygon
+
+
+
+    @classmethod
+    def test(cls):
+        o = OpticalCharacterRecognition('ocr/images/example1.png')
+        e = cls.strict_edges(o.best_polygon)
+        op = cls.order_polygon(e)
+        sp = cls.score_all_pixels(op)
+        ssp = cls.assign_secondary_scores(sp)
+
+        leaves = cls.distill_leaves(ssp)
+        new_p = cls.distill_polygon(o.best_polygon, leaves)
+        i = o.create_img_from_pixel_map(new_p)
+
+        # leaf_map = [l[0] for l in leaves]
+        # i = o.create_img_from_pixel_map(o.best_polygon)
+        # i = o.highlight_nodes(i, leaf_map)
+        i.show()
+
+        data = {
+            'image': o,
+            'edges': e,
+            'ordered_polygon': op,
+            'scored': ssp,
+            'outliers': outliers,
+            'stat': s,
+            'leaves': leaves,
+            'lm': leaf_map
+
+        }
+        return data
+
+
+
+
+
+
+
+
+
+
 
 
