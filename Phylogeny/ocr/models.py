@@ -551,9 +551,6 @@ class Skelleton(object):
 
     """
 
-    def __init__(self):
-        pass
-
     @staticmethod
     def min_score(scored_pixels):
         return min(scored_pixels, key=lambda x: x[1])[1]
@@ -840,22 +837,19 @@ class Skelleton(object):
         ==> resulting 2d polygon of thickness 1pixel --> trivial to find connections
         """
 
-
-
         pass
 
-    @staticmethod
-    def execute_contiguous_walk(polygon, starting_pixel):
-        contiguous_shape_pixels = set()
-        contiguous_shape_pixels.add(starting_pixel)
+    def execute_contiguous_walk(self, polygon, starting_pixel):
+        self.contiguous_shape_pixels = set()
+        self.contiguous_shape_pixels.add(starting_pixel)
 
         checked_pixels = set()
         if type(polygon) is not set:
             polygon = set(polygon)
 
         while True:
-            new_pixels = set()
-            for pixel in contiguous_shape_pixels:
+            self.new_pixel_set = set()
+            for pixel in self.contiguous_shape_pixels:
                 if pixel in checked_pixels:
                     continue
                 else:
@@ -865,14 +859,14 @@ class Skelleton(object):
                     if step in checked_pixels:
                         continue
                     if step in polygon:
-                        new_pixels.add(step)
+                        self.new_pixel_set.add(step)
 
-            if len(new_pixels):
-                contiguous_shape_pixels |= new_pixels
+            if len(self.new_pixel_set):
+                self.contiguous_shape_pixels |= self.new_pixel_set
             else:
                 break
 
-        return contiguous_shape_pixels
+        return self.contiguous_shape_pixels
 
 
     @classmethod
@@ -900,34 +894,105 @@ class Skelleton(object):
 
         return leaves
 
-    @classmethod
-    def valid_state(cls, polygon, leaves):
-        start = iter(polygon).next()
-        contiguous = cls.execute_contiguous_walk(polygon, start)
-        valid = True
-        for leaf in leaves:
-            if leaf not in contiguous:
-                valid = False
-                break
+    def valid_state(self, polygon, leaves):
+        start = iter(leaves).next()
+        # if start_defined:
+        #     if sum(1 for test in [Steps.step(start, step) for step in Steps.ALL]
+        #             if test in polygon) > 6:
+        #         return True
+        #
+        #     surrounding = 2
+        #     operations = [(x, y) for x in range(-surrounding, surrounding + 1)
+        #                   for y in range(-surrounding, surrounding + 1)
+        #                   if Pixel.distance((0,0), (x, y)) <= surrounding]
+        #     subset_polygon = []
+        #     for operation in operations:
+        #         test = Steps.step(start, operation)
+        #         if test in polygon:
+        #             subset_polygon.append(test)
+        #     contiguous = self.execute_contiguous_walk(subset_polygon, start)
+        #     if len(contiguous) == len(subset_polygon) and all(leaf in contiguous for leaf in leaves):
+        #         print "TRUE"
+        #         return True
 
-        return valid
+        contiguous = self.execute_contiguous_walk(polygon, start)
+        return all(leaf in contiguous
+                   for leaf in leaves)
 
-    @classmethod
-    def distill_polygon(cls, polygon, leaves):
+    def in_range_of_leaf(self, pixel, leaves):
+        return any(Pixel.distance(pixel, leaf) < 5
+                   for leaf in leaves)
+
+    def shave_off_edge(self, polygon, leaves):
+        edges = self.edges(polygon)
+
+        return set(p for p in polygon
+                   if p in leaves or self.in_range_of_leaf(p, leaves) or p not in edges)
+
+    def shave_until_fail(self, polygon, leaves):
+        last_state = polygon
+        print "START", len(last_state)
+        while True:
+            test = self.shave_off_edge(last_state, leaves)
+            print len(test)
+            if self.valid_state(test, leaves):
+                last_state = test
+                continue
+            else:
+                print "FINISH", len(last_state)
+                return last_state
+
+    def __init__(self):
+        o = OpticalCharacterRecognition('ocr/images/example1.png')
+        e = self.strict_edges(o.best_polygon)
+        op = self.order_polygon(e)
+        sp = self.score_all_pixels(op)
+        ssp = self.assign_secondary_scores(sp)
+        leaves = self.distill_leaves(ssp)
+        self.contiguous_shape_pixels = set()
+        self.new_pixel_set = set()
+        self.new_p = self.distill_polygon(o.best_polygon, leaves)
+        img = o.create_img_from_pixel_map(self.new_p)
+        img.show()
+
+        print self.new_p
+
+
+    def distill_polygon(self, polygon, leaves):
         leaves = set([l[0] for l in leaves])
-        new_polygon = polygon
+        # new_polygon = set(self.shave_until_fail(polygon, leaves))
+        # np = set()
+        # removed_count = 0
+        # for pixel in new_polygon:
+        #     surrounding = sum(1 for test in [Steps.step(pixel, step) for step in Steps.ALL]
+        #                       if test in new_polygon)
+        #     if pixel in leaves or surrounding < 8:
+        #         removed_count += 1
+        #         np.add(pixel)
+        #
+        # new_polygon = np
+        # print "removed count:", removed_count
+        new_polygon = set(polygon)
         last_length = len(new_polygon)
+        known_essentials = set()
         while True:
             for pixel in new_polygon:
-                test_p = set([p for p in new_polygon
-                              if p != pixel])
-                if cls.valid_state(test_p, leaves):
-                    new_polygon = test_p
-                    break
+                if pixel in known_essentials:
+                    continue
 
-            if len(new_polygon) == last_length:
+                new_polygon.remove(pixel)
+                if not self.valid_state(new_polygon, leaves):
+                    print "could not remove:", pixel
+                    known_essentials.add(pixel)
+                    new_polygon.add(pixel)
+
+                break
+
+            if len(new_polygon) == len(known_essentials):
                 break
             else:
+                print 'last:', last_length
+                print 'essentials', len(known_essentials)
                 last_length = len(new_polygon)
 
         return new_polygon
@@ -946,7 +1011,7 @@ class Skelleton(object):
         new_p = cls.distill_polygon(o.best_polygon, leaves)
         i = o.create_img_from_pixel_map(new_p)
 
-        # leaf_map = [l[0] for l in leaves]
+        leaf_map = [l[0] for l in leaves]
         # i = o.create_img_from_pixel_map(o.best_polygon)
         # i = o.highlight_nodes(i, leaf_map)
         i.show()
@@ -956,8 +1021,6 @@ class Skelleton(object):
             'edges': e,
             'ordered_polygon': op,
             'scored': ssp,
-            'outliers': outliers,
-            'stat': s,
             'leaves': leaves,
             'lm': leaf_map
 
