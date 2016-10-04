@@ -1,6 +1,6 @@
 from django.db import models
 from PIL import Image, ImageDraw
-import pytesseract
+# import pytesseract
 
 class th(object):
 
