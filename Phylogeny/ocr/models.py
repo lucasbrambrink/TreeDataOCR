@@ -969,7 +969,7 @@ class Skelleton(object):
                 return last_state
 
     def __init__(self):
-        self.o = OpticalCharacterRecognition('ocr/images/example2.png')
+        self.o = OpticalCharacterRecognition('ocr/images/example1.png')
         e = self.strict_edges(self.o.best_polygon)
         op = self.order_polygon(e)
         sp = self.score_all_pixels(op)
@@ -983,8 +983,8 @@ class Skelleton(object):
         # self.new_p = self.distill_polygon(o.best_polygon, leaves)
         img = self.o.create_img_from_pixel_map(self.new_p)
         # img = o.highlight_nodes(img, self.pure_leaf)
-        img.show()
-
+        # img.show()
+        img.save('testttttt123.png')
         print self.new_p
 
     def follow_orientation_as_far_as_possible(self, pixel, steps, polygon, new_polygon):
