@@ -1,5 +1,6 @@
 from PIL import Image, ImageDraw
 
+
 class Stat(object):
 
     def __init__(self, data):
@@ -25,8 +26,6 @@ class Stat(object):
     @property
     def std(self):
         return self.var ** 0.5
-
-
 
 
 class Steps(object):
@@ -224,7 +223,16 @@ class PILHandler(object):
 
 
 class PolygonAnalyzer(object):
-
+    """
+    Contains main algorithm
+    1. Identify all separate contiguous black pixel maps (polygons)
+    2. a visualization of a phylogenetic tree inherently will have the biggest polygon be the tree
+    3. reduce the polygon of arbitrary thickness to a skelleton of ~= 1pixel thickness at any single point
+    4. traverse tree starting at any given leaf, ignoring "noise" branches,
+    ==> allows following unique path from any single point to another.
+    thereby extract tree structure -- traverse like N-Tree (not nec. binary)
+    """
+    
     def __init__(self, data_source=None):
         self.img = PILHandler(data_source)
         self.identified_polygons = []
@@ -325,7 +333,6 @@ class PolygonAnalyzer(object):
 
         return new_set
 
-
     def fix_gaps(self, polygon, full_map):
         floating_edges = set(n for p in polygon
                              for n in Steps.all_step(p)
@@ -337,21 +344,18 @@ class PolygonAnalyzer(object):
             add_this = False
 
             for orient in (Steps.VERT, Steps.HORIZ):
-                scored = [sum(1 if fneighbors[index] in full_map and fneighbors[index] not in polygon and index != -1 else 0
+                scored = [sum(1 if (fneighbors[index] in full_map and
+                                    fneighbors[index] not in polygon and
+                                    index != -1) else 0
                               for index in row) for row in orient]
 
                 if any(x > 0 for x in scored):
                     add_this = True
                     break
-                # top, mid, bottom = scored
-                # if mid == 0 and all(x > 0 for x in (top, bottom)):
-                #     add_this = True
-                #     break
 
             if add_this:
                 candidates.add(floating_edge)
 
-        print candidates
         new_set = set()
         neighbor_set = set()
         for candidate in candidates:
@@ -383,24 +387,10 @@ class PolygonAnalyzer(object):
                                    for index in row) for row in orient]
                     scored = [sum(row) for row in scored_rows]
 
-                    # top, mid, bottom = scored_rows
-                    # if ((top[0] == top[1] == 1 and mid[0] == 1) or
-                    #     (top[1] == top[2] == 1 and mid[2] == 1) or
-                    #     (mid[0] == 1 and bottom[0] == bottom[1] == 1) or
-                    #     (mid[2] == 1 and bottom[1] == bottom[2] == 1)):
-                    #     save_to_remove = True
-                    #     break
-                    #
-
-
-                    # if scored in ([1, 0, 3], [3, 0, 1], [2, 0, 3], [3, 0, 2]):
-                    #     continue
                     top, mid, bottom = scored
                     if (top == 3 and bottom == 0) or (bottom == 3 and top == 0):
                         save_to_remove = True
                         break
-
-                    # if any(x == 3 for x in (top, bottom)):
 
                 if save_to_remove:
                     thinner_polygon.remove(floating_edge)
@@ -410,10 +400,6 @@ class PolygonAnalyzer(object):
                 break
             else:
                 last_length = len(thinner_polygon)
-
-        # if len(candidates):
-        #     thinner_polygon = set(p for p in thinner_polygon
-        #                           if p not in candidates)
 
         return thinner_polygon
 
