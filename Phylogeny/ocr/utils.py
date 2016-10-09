@@ -94,6 +94,13 @@ class Steps(object):
                 for step in Steps.ALL]
 
     @classmethod
+    def step_many(cls, pixel, steps=2):
+        return [cls.step(pixel, (x, y,))
+                for x in range(-steps, steps + 1)
+                for y in range(-steps, steps + 1)
+                if (x, y) != (0, 0)]
+
+    @classmethod
     def step_all(cls, pixel, polygon):
         neighbors = []
         for step in cls.ALL:
@@ -258,13 +265,19 @@ class PolygonAnalyzer(object):
 
         return self.contiguous_shape
 
-    def find_all_polygons(self):
-        self.instance_black_pixels = set(self.img.black_pixels)
+    def find_all_polygons(self, pixel_map=None):
+        self.instance_black_pixels = pixel_map or set(self.img.black_pixels)
+        polygons = []
         while len(self.instance_black_pixels):
             polygon = self.execute_contiguous_walk(self.instance_black_pixels)
             self.instance_black_pixels = set(p for p in self.instance_black_pixels
                                              if p not in polygon)
-            self.identified_polygons.append((polygon, len(polygon)))
+            polygons.append((polygon, len(polygon)))
+
+        if pixel_map is None:
+            self.identified_polygons = polygons
+
+        return polygons
 
     @staticmethod
     def edges(polygon, strict=False):
@@ -286,19 +299,15 @@ class PolygonAnalyzer(object):
     def smart_reduction(self, polygon):
         thinner_polygon = polygon
         last_length = len(thinner_polygon)
-        required_pixels = set()
         while True:
             edges = self.edges(thinner_polygon)
-            print len(thinner_polygon), len(edges)
-
             for edge_pixel in set(edges):
                 neighbors = Steps.step_all(edge_pixel, thinner_polygon)
                 edge_neighbors = filter(lambda x: x in edges, neighbors)
 
                 if len(neighbors) != len(edge_neighbors):
                     thinner_polygon.remove(edge_pixel)
-                else:
-                    required_pixels.add(edge_pixel)
+
             if len(thinner_polygon) == last_length:
                 break
             else:
@@ -306,24 +315,38 @@ class PolygonAnalyzer(object):
 
         return thinner_polygon
 
-    def fix_gaps(self, thinner_polygon):
-        floating_edges = set(n for p in thinner_polygon
+    def fix_gaps_between_polygons(self, thinner_polygon):
+        polygons = self.find_all_polygons(thinner_polygon)
+        new_set = set()
+        print len(polygons)
+        for polygon in polygons:
+            fixed = self.fix_gaps(polygon[0], thinner_polygon)
+            new_set |= fixed
+
+        return new_set
+
+
+    def fix_gaps(self, polygon, full_map):
+        floating_edges = set(n for p in polygon
                              for n in Steps.all_step(p)
-                             if n not in thinner_polygon)
+                             if n not in polygon)
 
         candidates = set()
         for floating_edge in floating_edges:
-            fneighbors = Steps.all_step(floating_edge)
+            fneighbors = Steps.step_many(floating_edge, 2)
             add_this = False
 
             for orient in (Steps.VERT, Steps.HORIZ):
-                scored = [sum(1 if fneighbors[index] in thinner_polygon and index != -1 else 0
+                scored = [sum(1 if fneighbors[index] in full_map and fneighbors[index] not in polygon and index != -1 else 0
                               for index in row) for row in orient]
 
-                top, mid, bottom = scored
-                if mid == 0 and all(x > 0 for x in (top, bottom)):
+                if any(x > 0 for x in scored):
                     add_this = True
                     break
+                # top, mid, bottom = scored
+                # if mid == 0 and all(x > 0 for x in (top, bottom)):
+                #     add_this = True
+                #     break
 
             if add_this:
                 candidates.add(floating_edge)
@@ -338,10 +361,66 @@ class PolygonAnalyzer(object):
                 new_set.add(candidate)
 
         if len(new_set):
-            print new_set
-            thinner_polygon |= new_set
+            polygon |= new_set
+
+        return polygon
+
+    def final_reduce(self, thinner_polygon):
+        last_length = len(thinner_polygon)
+        checked = set()
+        while True:
+            for floating_edge in thinner_polygon:
+                if floating_edge in checked:
+                    continue
+                else:
+                    checked.add(floating_edge)
+
+                fneighbors = Steps.all_step(floating_edge)
+                save_to_remove = False
+
+                for orient in (Steps.VERT, Steps.HORIZ):
+                    scored_rows = [tuple(1 if fneighbors[index] in thinner_polygon and index != -1 else 0
+                                   for index in row) for row in orient]
+                    scored = [sum(row) for row in scored_rows]
+
+                    # top, mid, bottom = scored_rows
+                    # if ((top[0] == top[1] == 1 and mid[0] == 1) or
+                    #     (top[1] == top[2] == 1 and mid[2] == 1) or
+                    #     (mid[0] == 1 and bottom[0] == bottom[1] == 1) or
+                    #     (mid[2] == 1 and bottom[1] == bottom[2] == 1)):
+                    #     save_to_remove = True
+                    #     break
+                    #
+
+
+                    # if scored in ([1, 0, 3], [3, 0, 1], [2, 0, 3], [3, 0, 2]):
+                    #     continue
+                    top, mid, bottom = scored
+                    if (top == 3 and bottom == 0) or (bottom == 3 and top == 0):
+                        save_to_remove = True
+                        break
+
+                    # if any(x == 3 for x in (top, bottom)):
+
+                if save_to_remove:
+                    thinner_polygon.remove(floating_edge)
+                    break
+
+            if len(thinner_polygon) == last_length:
+                break
+            else:
+                last_length = len(thinner_polygon)
+
+        # if len(candidates):
+        #     thinner_polygon = set(p for p in thinner_polygon
+        #                           if p not in candidates)
 
         return thinner_polygon
+
+    def is_valid(self, polygon):
+        cp = self.execute_contiguous_walk(polygon)
+
+
 
     def process_tree_polygon(self):
         if not len(self.identified_polygons):
@@ -349,11 +428,22 @@ class PolygonAnalyzer(object):
 
         tree_structure = self.best_polygon
         thin_structure = self.smart_reduction(tree_structure)
-        prc_structure = self.fix_gaps(thin_structure)
+        prc_structure = self.fix_gaps_between_polygons(thin_structure)
+        last_length = len(prc_structure)
+        while True:
+            prc_structure = self.fix_gaps_between_polygons(prc_structure)
+            if len(prc_structure) == last_length:
+                break
+            else:
+                last_length = len(prc_structure)
 
-        self.processed_tree = prc_structure
 
-        img = self.img.create_img_from_pixel_map(prc_structure)
+        prc_structure = self.fix_gaps_between_polygons(prc_structure)
+
+        f = self.final_reduce(prc_structure)
+        self.processed_tree = f
+
+        img = self.img.create_img_from_pixel_map(self.processed_tree)
         img.show()
         return prc_structure
 
