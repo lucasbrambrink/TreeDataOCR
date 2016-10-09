@@ -51,7 +51,7 @@ MIDDLEWARE_CLASSES = (
 )
 
 SHELL_PLUS_PRE_IMPORTS = (
-    ('ocr.models', ('OpticalCharacterRecognition', 'Skelleton', 'Stat', 'Pixel')),
+    ('ocr.utils', ('PolygonAnalyzer', 'Stat', 'Steps', 'PILHandler', 'Pixel')),
 )
 
 ROOT_URLCONF = 'Phylogeny.urls'
@@ -64,10 +64,15 @@ WSGI_APPLICATION = 'Phylogeny.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'NAME': 'phylogeny',
+        'USER': 'lb',
+        'PASSWORD': 'Jackson',
+        'HOST': 'localhost',
+        'PORT': '5432',
+    },
 }
+
 
 # Internationalization
 # https://docs.djangoproject.com/en/1.7/topics/i18n/
