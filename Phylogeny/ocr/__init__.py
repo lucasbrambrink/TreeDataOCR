@@ -1,1 +1,2 @@
-from .utils import PolygonAnalyzer, PILHandler, Pixel, Steps, Stat
+from .utils import PILHandler, Pixel, Steps, Stat
+from .algorithm import PolygonAnalyzer

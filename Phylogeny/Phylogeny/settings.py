@@ -51,7 +51,8 @@ MIDDLEWARE_CLASSES = (
 )
 
 SHELL_PLUS_PRE_IMPORTS = (
-    ('ocr.utils', ('PolygonAnalyzer', 'Stat', 'Steps', 'PILHandler', 'Pixel')),
+    ('ocr.utils', ('Stat', 'Steps', 'PILHandler', 'Pixel')),
+    ('ocr.algorithm', ('PolygonAnalyzer',)),
 )
 
 ROOT_URLCONF = 'Phylogeny.urls'

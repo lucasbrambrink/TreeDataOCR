@@ -1,5 +1,6 @@
 from django.db import models
-from .utils import PolygonAnalyzer, PILHandler
+from .utils import PILHandler
+from .algorithm import PolygonAnalyzer
 
 
 class ImageAnalysis(models.Model):
