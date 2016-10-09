@@ -232,7 +232,7 @@ class PolygonAnalyzer(object):
     ==> allows following unique path from any single point to another.
     thereby extract tree structure -- traverse like N-Tree (not nec. binary)
     """
-    
+
     def __init__(self, data_source=None):
         self.img = PILHandler(data_source)
         self.identified_polygons = []
@@ -240,6 +240,39 @@ class PolygonAnalyzer(object):
         self.instance_black_pixels = set()
         self._best_polygon = None
         self.contiguous_shape = set()
+
+    def process_tree_polygon(self):
+        if not len(self.identified_polygons):
+            self.find_all_polygons()
+
+        # select tree polygon
+        tree_structure = self.best_polygon
+
+        # reduce all edges until all pixels in polygon are also edges
+        thin_structure = self.smart_reduction(tree_structure)
+
+        # fix any breaks in continuity
+        amended_polygons = self.amend_polygons(thin_structure)
+
+        # remove any duplicate / unnecessary pixels
+        f = self.final_reduce(amended_polygons)
+
+        self.processed_tree = f
+        img = self.img.create_img_from_pixel_map(self.processed_tree)
+        img.show()
+        return self.processed_tree
+
+    def amend_polygons(self, thin_structure):
+        amended_polygons = set(thin_structure)
+        last_length = len(thin_structure)
+        while True:
+            amended_polygons = self.fix_gaps_between_polygons(amended_polygons)
+            if len(amended_polygons) == last_length:
+                break
+            else:
+                last_length = len(amended_polygons)
+
+        return amended_polygons
 
     @property
     def best_polygon(self):
@@ -402,34 +435,3 @@ class PolygonAnalyzer(object):
                 last_length = len(thinner_polygon)
 
         return thinner_polygon
-
-    def is_valid(self, polygon):
-        cp = self.execute_contiguous_walk(polygon)
-
-
-
-    def process_tree_polygon(self):
-        if not len(self.identified_polygons):
-            self.find_all_polygons()
-
-        tree_structure = self.best_polygon
-        thin_structure = self.smart_reduction(tree_structure)
-        prc_structure = self.fix_gaps_between_polygons(thin_structure)
-        last_length = len(prc_structure)
-        while True:
-            prc_structure = self.fix_gaps_between_polygons(prc_structure)
-            if len(prc_structure) == last_length:
-                break
-            else:
-                last_length = len(prc_structure)
-
-
-        prc_structure = self.fix_gaps_between_polygons(prc_structure)
-
-        f = self.final_reduce(prc_structure)
-        self.processed_tree = f
-
-        img = self.img.create_img_from_pixel_map(self.processed_tree)
-        img.show()
-        return prc_structure
-
