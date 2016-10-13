@@ -72,14 +72,21 @@ class Steps(object):
     )
 
     ACCEPTABLE_POS = (
-        (UP, UP_LEFT, UP_RIGHT), #(UP, UP_RIGHT),
-        (RIGHT, UP_RIGHT, DOWN_RIGHT),# (RIGHT, DOWN_RIGHT),
-        (DOWN, DOWN_RIGHT, DOWN_LEFT),# (DOWN, DOWN_LEFT),
-        (LEFT, DOWN_LEFT, UP_LEFT),# (LEFT, UP_LEFT),
-        (UP, LEFT),
-        (UP, RIGHT),
-        (DOWN, LEFT),
-        (DOWN, RIGHT)
+        (UP, UP_LEFT, LEFT), #(UP, UP_RIGHT),
+        (RIGHT, UP_RIGHT, UP),# (RIGHT, DOWN_RIGHT),
+        (DOWN, DOWN_RIGHT, RIGHT),# (DOWN, DOWN_LEFT),
+        (LEFT, DOWN, DOWN_LEFT),# (LEFT, UP_LEFT),
+        # (UP, LEFT),
+        # (UP, RIGHT),
+        # (DOWN, LEFT),
+        # (DOWN, RIGHT)
+    )
+
+    BORDERS = (
+        (UP, (UP_LEFT, UP_RIGHT)),
+        (LEFT, (UP_LEFT, DOWN_LEFT)),
+        (RIGHT, (UP_RIGHT, DOWN_RIGHT)),
+        (DOWN, (DOWN_LEFT, DOWN_RIGHT)),
     )
 
     @staticmethod
@@ -200,15 +207,19 @@ class PILHandler(object):
         return self._black_pixels
 
     @classmethod
-    def highlight_pixels(cls, img, pixels, color=None):
+    def highlight_pixels(cls, img, pixels, color=None, no_circle=False):
         draw = ImageDraw.Draw(img)
         color = color or cls.CIRCLE_COLOR
+        px = img.load()
         for node in pixels:
-            draw.ellipse((node[0] - cls.RADIUS,
-                          node[1] - cls.RADIUS,
-                          node[0] + cls.RADIUS,
-                          node[1] + cls.RADIUS),
-                         fill=color)
+            if not no_circle:
+                draw.ellipse((node[0] - cls.RADIUS,
+                              node[1] - cls.RADIUS,
+                              node[0] + cls.RADIUS,
+                              node[1] + cls.RADIUS),
+                              fill=color)
+            else:
+                px[node[0], node[1]] = Pixel.GREEN
 
         return img
 
@@ -220,3 +231,28 @@ class PILHandler(object):
             new_pixels[x, y] = Pixel.BLACK
 
         return img
+
+
+class Tree(object):
+
+    def __init__(self, item=None, parent=None, branches=None):
+        if branches is None:
+            branches = []
+
+        self.item = item
+        self.branches = branches
+        self.parent = parent
+
+    def __unicode__(self):
+        return u"{}, branches: {}".format(str(len(self.item)), str(len(self.branches)))
+
+    def __str__(self):
+        return self.__unicode__()
+
+    @property
+    def length(self):
+        return len(self.item)
+
+    @property
+    def is_leaf(self):
+        return len(filter(None, self.branches)) == 0
