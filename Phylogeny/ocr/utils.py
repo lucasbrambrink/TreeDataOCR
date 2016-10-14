@@ -256,3 +256,14 @@ class Tree(object):
     @property
     def is_leaf(self):
         return len(filter(None, self.branches)) == 0
+
+    @property
+    def as_newick(self):
+        if not len(self.branches):
+            return str(len(self.item))
+
+        else:
+            return str(len(self.item)), tuple(b.as_newick for b in self.branches)
+        # yield b.as_newick for b in self.branches
+        # else:
+        #     return self.as_newick, tuple(b.as_newick for b in self.branches)

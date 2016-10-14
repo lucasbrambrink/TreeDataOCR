@@ -46,14 +46,43 @@ class PolygonAnalyzer(object):
         # img.show()
         tree = self.analyze_tree(self.processed_tree)
         clean = self.clean_tree(tree)
+        # #
+        # # cleaner = filter(lambda x: not (len(x.item) < 5 and len(x.branches) == 0),
+        # #                  self.flatten_tree(clean))
         # cleaner = self.traverse_tree_length(clean)
-        # self.q = cleaner
+        # cleanest = self.traverse_tree_length_three(cleaner)
+        # clean = self.traverse_tree_length(cleanest)
+
+        node = clean
+        last_length = len(self.flatten_tree(node))
+        while True:
+            node = self.traverse_tree_length(node)
+            node = self.traverse_tree_length_three(node)
+
+            length = len(self.flatten_tree(node))
+            if last_length == length:
+                break
+            else:
+                last_length = length
+
+
+
+
+
+
+        # clean = self.traverse_tree(cleaner)
+
         # self.d = self.traverse_tree(cleaner)
-        self.analyzed_tree = clean
+        self.analyzed_tree = node
         return clean
 
-    def show_tree(self):
+    def show_tree(self, no_circle=False):
         import random
+        from ete3 import Tree
+        newick_string = str(self.analyzed_tree.as_newick)
+        print newick_string
+        tree = Tree(newick_string)
+        print tree
         pixels = []
         trees = self.flatten_tree(self.analyzed_tree)
         for t in trees:
@@ -63,8 +92,13 @@ class PolygonAnalyzer(object):
         for t in trees:
             show = [t.item[0], t.item[-1]]
             color = tuple(random.randint(0, 255) for x in range(3))
-            self.img.highlight_pixels(img, show, color=color)
+            self.img.highlight_pixels(img, show, color=color, no_circle=no_circle)
 
+        for t in trees:
+            print t
+
+        print '*' * 50
+        print self.analyzed_tree.as_newick
         img.show()
 
     def amend_polygons(self, thin_structure):
@@ -464,8 +498,7 @@ class PolygonAnalyzer(object):
         return node
 
     def traverse_tree_length(self, node):
-        traversed_trees = set()
-        traversed_trees.add(node)
+        traversed_trees = [node]
         last_length = len(traversed_trees)
         checked = set()
         while True:
@@ -475,12 +508,86 @@ class PolygonAnalyzer(object):
                 else:
                     checked.add(tree)
 
-                clean_node = self.clean_by_length(tree)
-                if not len(clean_node.branches):
-                    continue
-                for branch in clean_node.branches:
-                    traversed_trees.add(branch)
+                LENIENCY = 10
+                if len(tree.item) < LENIENCY:
+                    parent = tree.parent
+                    if tree in parent.branches:
+                        parent.branches.remove(tree)
 
+                    for branch in tree.branches:
+                        parent.branches.add(branch)
+
+                    if parent in checked:
+                        checked.remove(parent)
+
+                    last_length -= 1
+                    break
+                #
+                # if len(tree.branches) == 1:
+                #     branch = tree.branches.pop()
+                #     tree.item.extend(branch.item)
+                #     for new_branch in branch.branches:
+                #         tree.branches.add(new_branch)
+                #
+                #
+                #
+                # if len(tree.item) < 10 and len(tree.branches) > 0:
+                #     parent.branches |= tree.branches
+                    # if tree in parent.branches:
+                    #     parent.branches.remove(tree)
+                    # parent.branches |= tree.branches
+                    # parent.item.extend(tree.item)
+
+
+                # clean_node = self.clean_by_length(tree)
+                if not len(tree.branches):
+                    continue
+
+                traversed_trees.extend(tree.branches)
+                break
+
+            if len(traversed_trees) == last_length:
+                break
+            else:
+                last_length = len(traversed_trees)
+
+        return node
+
+    def traverse_tree_length_three(self, node):
+        traversed_trees = [node]
+        last_length = len(traversed_trees)
+        checked = set()
+        while True:
+            for tree in traversed_trees:
+                if tree in checked:
+                    continue
+                else:
+                    checked.add(tree)
+
+                if len(tree.branches) == 1:
+                    branch = tree.branches.pop()
+                    tree.item.extend(branch.item)
+                    for new_branch in branch.branches:
+                        new_branch.parent = tree
+                        tree.branches.add(new_branch)
+
+                #
+                #
+                # if len(tree.item) < 10 and len(tree.branches) > 0:
+                #     parent.branches |= tree.branches
+                    # if tree in parent.branches:
+                    #     parent.branches.remove(tree)
+                    # parent.branches |= tree.branches
+                    # parent.item.extend(tree.item)
+
+
+                # clean_node = self.clean_by_length(tree)
+                if not len(tree.branches):
+                    continue
+
+                good_branches = [b for b in tree.branches
+                                 if not (len(b.item) < 10 and len(b.branches) == 0)]
+                traversed_trees.extend(good_branches)
                 break
 
             if len(traversed_trees) == last_length:
